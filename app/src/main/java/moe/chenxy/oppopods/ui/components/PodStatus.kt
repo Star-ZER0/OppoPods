@@ -110,7 +110,6 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
                 fontSize = 13.sp,
                 color = Color.Gray
             )
-            Spacer(modifier = Modifier.height(1.dp))
             Image(
                 painter = themedPainterResource(
                     getBatteryIconRes(iconLevel, if (isConnected) pod?.isCharging == true else false)

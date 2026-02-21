@@ -63,6 +63,7 @@ object RfcommController {
     private var currentGameMode: Boolean = false
     private var lastKnownCaseBattery: Int = 0
     private var lastKnownCaseCharging: Boolean = false
+    private var cachedDeviceName: String = ""
 
     // Polling job
     private var batteryPollJob: kotlinx.coroutines.Job? = null
@@ -120,7 +121,7 @@ object RfcommController {
                 changeUIAncStatus(currentAnc)
                 changeUIGameModeStatus(currentGameMode)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
-                    this.putExtra("device_name", mDevice.name)
+                    this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
                     this.`package` = BuildConfig.APPLICATION_ID
                     this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     mContext!!.sendBroadcast(this)
@@ -239,6 +240,7 @@ object RfcommController {
         mContext = context
         mDevice = device
         mPrefsBridge = prefsBridge
+        cachedDeviceName = device.name ?: ""
 
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
             this.addAction(OppoPodsAction.ACTION_ANC_SELECT)
@@ -249,7 +251,7 @@ object RfcommController {
         }, Context.RECEIVER_EXPORTED)
 
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
-            this.putExtra("device_name", device.name)
+            this.putExtra("device_name", cachedDeviceName)
             this.`package` = BuildConfig.APPLICATION_ID
             this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             context.sendBroadcast(this)
@@ -392,6 +394,7 @@ object RfcommController {
         mShowedConnectedToast = false
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
+        cachedDeviceName = ""
         mContext = null
         MediaControl.mContext = null
     }
