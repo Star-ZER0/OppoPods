@@ -18,7 +18,7 @@ apksign {
 
 android {
     namespace = "moe.chenxy.oppopods"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "moe.chenxy.oppopods"
@@ -42,7 +42,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            multiDexEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
