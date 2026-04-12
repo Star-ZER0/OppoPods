@@ -129,7 +129,7 @@ fun DevicePickerPage(onDeviceSelected: (BluetoothDevice) -> Unit) {
 
     OverlayDialog(
         title = stringResource(R.string.input_mac_title),
-        show = showMacDialog,
+        show = showMacDialog.value,
         onDismissRequest = { showMacDialog.value = false },
     ) {
         TextField(

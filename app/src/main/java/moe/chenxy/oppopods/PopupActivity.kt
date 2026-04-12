@@ -181,7 +181,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     Scaffold(containerColor = Color.Transparent) { _ ->
         OverlayDialog(
             title = deviceName.value.ifEmpty { stringResource(R.string.app_name) },
-            show = showDialog,
+            show = showDialog.value,
             backgroundColor = dialogBgColor,
             onDismissRequest = {
                 showDialog.value = false

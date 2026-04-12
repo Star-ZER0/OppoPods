@@ -118,7 +118,7 @@ fun SettingsPage(
     OverlayDialog(
         title = stringResource(R.string.heytap_warning_title),
         summary = stringResource(R.string.heytap_warning),
-        show = showHeyTapWarning,
+        show = showHeyTapWarning.value,
         onDismissRequest = {
             showHeyTapWarning.value = false
         }
