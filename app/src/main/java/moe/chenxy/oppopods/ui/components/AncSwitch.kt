@@ -43,11 +43,16 @@ import top.yukonga.miuix.kmp.utils.pressable
 private const val ANIM_DURATION = 300
 
 @Composable
-fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -> Unit) {
+fun AncSwitch(
+    ancStatus: NoiseControlMode,
+    onAncModeChange: (NoiseControlMode) -> Unit,
+    compact: Boolean = false
+) {
+    val verticalPadding = if (compact) 8.dp else 16.dp
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 16.dp),
+            .padding(vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AncButton(
@@ -56,7 +61,8 @@ fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -
             label = stringResource(R.string.noise_cancellation_title),
             isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION,
             onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            compact = compact
         )
         AncButton(
             offIconRes = R.drawable.ic_adaptive_off,
@@ -80,7 +86,8 @@ fun AncSwitch(ancStatus: NoiseControlMode, onAncModeChange: (NoiseControlMode) -
             label = stringResource(R.string.off),
             isSelected = ancStatus == NoiseControlMode.OFF,
             onClick = { onAncModeChange(NoiseControlMode.OFF) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            compact = compact
         )
     }
 }
@@ -92,9 +99,12 @@ private fun AncButton(
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val boxSize = if (compact) 40.dp else 60.dp
+    val iconSize = if (compact) (if (isSelected) 40.dp else 32.dp) else (if (isSelected) 60.dp else 48.dp)
 
     val textColor by animateColorAsState(
         targetValue = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground,
@@ -109,7 +119,7 @@ private fun AncButton(
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
         Box(
-            modifier = Modifier.size(60.dp),
+            modifier = Modifier.size(boxSize),
             contentAlignment = Alignment.Center
         ) {
             Crossfade(
@@ -118,13 +128,13 @@ private fun AncButton(
                 label = "anc_icon"
             ) { selected ->
                 Box(
-                    modifier = Modifier.size(60.dp),
+                    modifier = Modifier.size(boxSize),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = themedPainterResource(if (selected) onIconRes else offIconRes),
                         contentDescription = label,
-                        modifier = Modifier.size(if (selected) 60.dp else 48.dp)
+                        modifier = Modifier.size(if (selected) boxSize else (if (compact) 32.dp else 48.dp))
                     )
                 }
             }
@@ -132,7 +142,7 @@ private fun AncButton(
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             label,
-            fontSize = 14.sp,
+            fontSize = if (compact) 12.sp else 14.sp,
             fontWeight = FontWeight.Medium,
             color = textColor
         )
