@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -175,6 +179,10 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     }
 
     val dialogBgColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF7F7F7)
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val gapSmall = if (isLandscape) 6.dp else 12.dp
+    val gapLarge = if (isLandscape) 8.dp else 16.dp
+    val podStatusVerticalPadding = if (isLandscape) 8.dp else 16.dp
 
     Scaffold(containerColor = Color.Transparent) { _ ->
         OverlayDialog(
@@ -188,18 +196,27 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                 onDone()
             }
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (isLandscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            ) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     PodStatus(
                         batteryParams.value,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = podStatusVerticalPadding),
+                        compact = isLandscape
                     )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(gapSmall))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    AncSwitch(ancMode.value, onAncModeChange = { setAncMode(it) })
+                    AncSwitch(
+                        ancMode.value,
+                        onAncModeChange = { setAncMode(it) },
+                        compact = isLandscape
+                    )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(gapSmall))
                 Card(modifier = Modifier.fillMaxWidth()) {
                     SwitchPreference(
                         title = stringResource(R.string.game_mode),
@@ -208,7 +225,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                         onCheckedChange = { setGameMode(it) }
                     )
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(gapLarge))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
