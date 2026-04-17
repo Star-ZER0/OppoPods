@@ -281,7 +281,7 @@ private fun LandscapePopupBody(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(modifier = Modifier.weight(0.65f)) {
+        Column(modifier = Modifier.weight(0.60f)) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 PodStatus(
                     batteryParams,
@@ -298,7 +298,7 @@ private fun LandscapePopupBody(
                 )
             }
         }
-        Column(modifier = Modifier.weight(0.35f)) {
+        Column(modifier = Modifier.weight(0.40f)) {
             TextButton(
                 text = stringResource(
                     if (gameMode) R.string.disable_game_mode else R.string.enable_game_mode
