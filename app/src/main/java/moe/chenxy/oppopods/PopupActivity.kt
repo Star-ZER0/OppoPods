@@ -299,14 +299,14 @@ private fun LandscapePopupBody(
             }
         }
         Column(modifier = Modifier.weight(0.35f)) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                SwitchPreference(
-                    title = stringResource(R.string.game_mode),
-                    checked = gameMode,
-                    onCheckedChange = onGameModeChange
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                text = stringResource(
+                    if (gameMode) R.string.disable_game_mode else R.string.enable_game_mode
+                ),
+                onClick = { onGameModeChange(!gameMode) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             TextButton(
                 text = stringResource(R.string.more),
                 onClick = onMore,

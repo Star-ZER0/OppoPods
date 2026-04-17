@@ -1,11 +1,11 @@
-name: Build OppoPods
+name: Build OppoPods v7-Final
 
 on:
   push:
-    tags: [ "*" ]
-    branches: [ "master" ]
+    tags: [ "v*" ]
+    branches: [ "master", "main" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "main" ]
   workflow_dispatch:
 
 jobs:
@@ -16,8 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -27,90 +25,68 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-home-cache-cleanup: true
 
-      - name: Grant execute permission for gradlew
+      - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Build release APK
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
-        run: |
-          echo 'org.gradle.parallel=true' >> gradle.properties
-          echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
-          ./gradlew assembleRelease
+      # 编译 APK
+      - name: Build APKs
+        run: ./gradlew assembleDebug assembleRelease
 
-      - name: Build debug APK (fallback when no signing key)
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY == '' }}
-        run: |
-          echo 'org.gradle.parallel=true' >> gradle.properties
-          echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
-          ./gradlew assembleDebug
-
+      # 签名逻辑
       - name: Sign release APK
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         if: ${{ env.SIGNING_KEY != '' }}
         run: |
-          # Decode keystore from base64
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > /tmp/keystore.jks
-
-          # Find latest build-tools
           BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)
-          echo "Using build-tools: $BUILD_TOOLS"
-
-          # Find the unsigned APK
-          UNSIGNED_APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
-          echo "Unsigned APK: $UNSIGNED_APK"
-
-          # Zipalign
-          ${BUILD_TOOLS}zipalign -f 4 "$UNSIGNED_APK" app/build/outputs/apk/release/OppoPods-release-signed.apk
-
-          # Sign with apksigner
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name '*-unsigned.apk' | head -1)
+          
+          # 统一输出到当前目录，消除深层路径干扰
+          ${BUILD_TOOLS}zipalign -f 4 "$UNSIGNED_APK" ./release.apk
+          
           ${BUILD_TOOLS}apksigner sign \
             --ks /tmp/keystore.jks \
             --ks-key-alias "${{ secrets.ALIAS }}" \
             --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
             --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
-            app/build/outputs/apk/release/OppoPods-release-signed.apk
-
-          # Verify
-          ${BUILD_TOOLS}apksigner verify --print-certs app/build/outputs/apk/release/OppoPods-release-signed.apk
-
-          # Cleanup
+            ./release.apk
           rm /tmp/keystore.jks
 
-      - name: Upload signed release APK
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: OppoPods-release
-          path: app/build/outputs/apk/release/OppoPods-release-signed.apk
+      - name: Prepare Debug APK
+        run: |
+          DEBUG_RAW=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          cp "$DEBUG_RAW" ./debug.apk
 
-      - name: Upload debug APK
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY == '' }}
-        uses: actions/upload-artifact@v4
+      # =======================================================
+      # 重点：严格使用 v7 版本并开启 archive: false
+      # =======================================================
+      
+      - name: Upload Release APK (Unzipped)
+        uses: actions/upload-artifact@v7
         with:
-          name: OppoPods-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: release.apk   # 明确带后缀的名字
+          path: ./release.apk
+          archive: false      # 核心：2026新特性，禁止打包成zip
+
+      - name: Upload Debug APK (Unzipped)
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug.apk
+          path: ./debug.apk
+          archive: false
+
+      # =======================================================
 
       - name: Create GitHub Release
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         if: ${{ startsWith(github.ref, 'refs/tags/') && env.SIGNING_KEY != '' }}
         uses: ncipollo/release-action@v1
-        continue-on-error: true
         with:
           token: ${{ github.token }}
-          artifacts: app/build/outputs/apk/release/OppoPods-release-signed.apk
+          # 多个文件用逗号隔开
+          artifacts: "./release.apk,./debug.apk"
           generateReleaseNotes: true
           makeLatest: true
-          replacesArtifacts: true
