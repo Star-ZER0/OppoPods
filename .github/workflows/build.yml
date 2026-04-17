@@ -1,4 +1,4 @@
-name: Build OppoPods v7-Final
+name: Build Release APK
 
 on:
   push:
@@ -29,64 +29,58 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      # 编译 APK
-      - name: Build APKs
-        run: ./gradlew assembleDebug assembleRelease
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease
 
-      # 签名逻辑
       - name: Sign release APK
+        id: sign
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
         run: |
-          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > /tmp/keystore.jks
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)
-          UNSIGNED_APK=$(find app/build/outputs/apk/release -name '*-unsigned.apk' | head -1)
-          
-          # 统一输出到当前目录，消除深层路径干扰
-          ${BUILD_TOOLS}zipalign -f 4 "$UNSIGNED_APK" ./release.apk
-          
-          ${BUILD_TOOLS}apksigner sign \
-            --ks /tmp/keystore.jks \
-            --ks-key-alias "${{ secrets.ALIAS }}" \
-            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
-            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
-            ./release.apk
-          rm /tmp/keystore.jks
+          set -e
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -maxdepth 2 -name '*.apk' | head -1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "No release APK found." >&2
+            exit 1
+          fi
 
-      - name: Prepare Debug APK
-        run: |
-          DEBUG_RAW=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
-          cp "$DEBUG_RAW" ./debug.apk
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo "unversioned")
+          OUT_NAME="OppoPods-${VERSION_NAME}-release.apk"
 
-      # =======================================================
-      # 重点：严格使用 v7 版本并开启 archive: false
-      # =======================================================
-      
-      - name: Upload Release APK (Unzipped)
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+
+          if [ -n "$SIGNING_KEY" ]; then
+            echo "$SIGNING_KEY" | base64 -d > /tmp/keystore.jks
+            "${BUILD_TOOLS}zipalign" -f 4 "$UNSIGNED_APK" "./$OUT_NAME"
+            "${BUILD_TOOLS}apksigner" sign \
+              --ks /tmp/keystore.jks \
+              --ks-key-alias "${{ secrets.ALIAS }}" \
+              --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+              --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+              "./$OUT_NAME"
+            rm /tmp/keystore.jks
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            # No signing key: upload the gradle-produced APK as-is (may be unsigned)
+            cp "$UNSIGNED_APK" "./$OUT_NAME"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "apk=$OUT_NAME" >> "$GITHUB_OUTPUT"
+
+      # Non-zipped artifact upload — GitHub Actions 2026-02 feature
+      - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
-          name: release.apk   # 明确带后缀的名字
-          path: ./release.apk
-          archive: false      # 核心：2026新特性，禁止打包成zip
-
-      - name: Upload Debug APK (Unzipped)
-        uses: actions/upload-artifact@v7
-        with:
-          name: debug.apk
-          path: ./debug.apk
+          name: ${{ steps.sign.outputs.apk }}
+          path: ./${{ steps.sign.outputs.apk }}
           archive: false
-
-      # =======================================================
+          if-no-files-found: error
 
       - name: Create GitHub Release
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ startsWith(github.ref, 'refs/tags/') && env.SIGNING_KEY != '' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') && steps.sign.outputs.signed == 'true' }}
         uses: ncipollo/release-action@v1
         with:
           token: ${{ github.token }}
-          # 多个文件用逗号隔开
-          artifacts: "./release.apk,./debug.apk"
+          artifacts: "./${{ steps.sign.outputs.apk }}"
           generateReleaseNotes: true
           makeLatest: true
