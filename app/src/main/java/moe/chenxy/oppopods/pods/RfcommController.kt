@@ -15,8 +15,6 @@ import android.media.MediaRoute2Info
 import android.media.MediaRouter2
 import android.media.RouteDiscoveryPreference
 import android.util.Log
-import com.highcapable.yukihookapi.hook.xposed.prefs.YukiHookPrefsBridge
-import de.robv.android.xposed.XposedHelpers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -33,6 +31,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsPrefsKey
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import java.io.IOException
 import java.io.InputStream
+import android.content.SharedPreferences
 import java.util.concurrent.Executor
 
 @SuppressLint("MissingPermission", "StaticFieldLeak")
@@ -48,7 +47,7 @@ object RfcommController {
     private val audioManager: AudioManager? by lazy {
         mContext?.getSystemService(AudioManager::class.java)
     }
-    private lateinit var mPrefsBridge: YukiHookPrefsBridge
+    private lateinit var mPrefs: SharedPreferences
 
     private var scanToken: MediaRouter2.ScanToken? = null
     var routes: List<MediaRoute2Info> = listOf()
@@ -259,13 +258,13 @@ object RfcommController {
         return method.invoke(device, RFCOMM_CHANNEL) as BluetoothSocket
     }
 
-    fun connectPod(context: Context, device: BluetoothDevice, prefsBridge: YukiHookPrefsBridge) {
+    fun connectPod(context: Context, device: BluetoothDevice, prefs: SharedPreferences) {
         mContext = context
         mDevice = device
-        mPrefsBridge = prefsBridge
+        mPrefs = prefs
         cachedDeviceName = device.name ?: ""
         // 初始化 Adaptive 模式状态缓存，从 SharedPreferences 读取当前值
-        adaptiveModeEnabled = mPrefsBridge.name("oppopods_settings").getBoolean("adaptive_mode", true)
+        adaptiveModeEnabled = mPrefs.getBoolean("adaptive_mode", true)
         Log.d(TAG, "Adaptive mode initial: $adaptiveModeEnabled")
 
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
@@ -310,9 +309,8 @@ object RfcommController {
                 queryStatus()
 
                 // Auto-enable game mode if preference is set.
-                // Read via YukiHookPrefsBridge since we're in com.android.bluetooth's
-                // process — context.getSharedPreferences would read the wrong file.
-                if (mPrefsBridge.name("oppopods_settings").getBoolean("auto_game_mode", false)) {
+                // Read remote module preferences since this runs in com.android.bluetooth.
+                if (mPrefs.getBoolean("auto_game_mode", false)) {
                     delay(100)
                     sendPacketSafe(Enums.GAME_MODE_ON)
                 }
@@ -578,10 +576,35 @@ object RfcommController {
 
     fun setRegularBatteryLevel(level: Int) {
         try {
-            val service = XposedHelpers.getObjectField(mContext, "mAdapterService")
-            XposedHelpers.callMethod(service, "setBatteryLevel", mDevice, level, false)
+            val service = getObjectField(mContext, "mAdapterService")
+            callMethod(service, "setBatteryLevel", mDevice, level, false)
         } catch (e: Exception) {
             Log.e(TAG, "setRegularBatteryLevel failed", e)
         }
+    }
+
+    private fun getObjectField(instance: Any?, fieldName: String): Any? {
+        if (instance == null) return null
+        var cls: Class<*>? = instance.javaClass
+        while (cls != null) {
+            runCatching {
+                return cls.getDeclaredField(fieldName).apply { isAccessible = true }.get(instance)
+            }
+            cls = cls.superclass
+        }
+        throw NoSuchFieldException(fieldName)
+    }
+
+    private fun callMethod(instance: Any?, methodName: String, vararg args: Any?): Any? {
+        if (instance == null) return null
+        var cls: Class<*>? = instance.javaClass
+        while (cls != null) {
+            cls.declaredMethods.firstOrNull { it.name == methodName && it.parameterTypes.size == args.size }?.let {
+                it.isAccessible = true
+                return it.invoke(instance, *args)
+            }
+            cls = cls.superclass
+        }
+        throw NoSuchMethodException(methodName)
     }
 }

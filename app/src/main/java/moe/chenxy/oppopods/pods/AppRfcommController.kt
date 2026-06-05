@@ -20,7 +20,7 @@ import java.io.InputStream
 
 /**
  * Standalone RFCOMM controller for direct use from the app process.
- * Does not depend on Xposed / YukiHookAPI.
+ * Does not depend on the hook runtime.
  */
 @SuppressLint("MissingPermission")
 class AppRfcommController {

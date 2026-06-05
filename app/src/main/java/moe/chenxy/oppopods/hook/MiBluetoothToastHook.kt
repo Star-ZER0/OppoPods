@@ -14,10 +14,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.util.Log
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.factory.constructor
 import com.xzakota.hyper.notification.focus.FocusNotification
-import de.robv.android.xposed.XposedHelpers
 import moe.chenxy.oppopods.utils.FocusIslandUtil
 import moe.chenxy.oppopods.utils.SystemApisUtils
 import moe.chenxy.oppopods.utils.SystemApisUtils.cancelAsUser
@@ -27,7 +24,7 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.R
 
 @SuppressLint("MissingPermission")
-object MiBluetoothToastHook : YukiBaseHooker() {
+object MiBluetoothToastHook : HookContext() {
 
     // ANC 模式本地缓存，用于循环切换和状态同步（1=关 2=降噪 3=通透 4=自适应）
     // 通过接收 ACTION_PODS_ANC_CHANGED 广播与 RfcommController 保持同步
@@ -233,12 +230,8 @@ object MiBluetoothToastHook : YukiBaseHooker() {
         }
 
 
-        "com.android.bluetooth.ble.app.MiuiBluetoothNotification".toClass().apply {
-            constructor {
-                paramCount = 2
-            }.hook {
-                after {
-                    val context = XposedHelpers.getObjectField(this.instance, "mContext") as Context
+        hookConstructorAfter(findConstructorByParamCount("com.android.bluetooth.ble.app.MiuiBluetoothNotification", 2)) {
+            val context = getObjectField(instance, "mContext") as Context
 
                     val broadcastReceiver = object : BroadcastReceiver() {
                         override fun onReceive(p0: Context?, p1: Intent?) {
@@ -267,7 +260,7 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                             } else if (p1?.action == OppoPodsAction.ACTION_CYCLE_ANC) {
                                 // 循环切换降噪模式：读取Adaptive模式偏好，关闭时跳过Adaptive仅三模式循环
                                 // 使用 prefs bridge 读取与 App 端同一 SharedPreferences 文件，确保状态同步
-                                val adaptiveEnabled = prefs.name("oppopods_settings").getBoolean("adaptive_mode", true)
+                                val adaptiveEnabled = prefs.getBoolean("adaptive_mode", true)
                                 localAncMode = when (localAncMode) {
                                     2 -> if (adaptiveEnabled) 4 else 3  // NC → Adaptive（若启用）或 Transparency
                                     4 -> 3  // Adaptive → Transparency
@@ -293,8 +286,6 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                     intentFilter.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
                     context.registerReceiver(broadcastReceiver, intentFilter,
                         Context.RECEIVER_EXPORTED)
-                }
-            }
         }
     }
 }

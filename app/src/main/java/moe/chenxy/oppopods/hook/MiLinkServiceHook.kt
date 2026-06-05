@@ -7,15 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.factory.method
-import de.robv.android.xposed.XposedHelpers
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 
 @SuppressLint("MissingPermission")
-object MiLinkServiceHook : YukiBaseHooker() {
+object MiLinkServiceHook : HookContext() {
     private const val TAG = "OppoPods-MiLink"
     private const val FAKE_DEVICE_ID = "01010901"
     private const val PREFS_NAME = "oppopods_milink_state"
@@ -39,13 +36,8 @@ object MiLinkServiceHook : YukiBaseHooker() {
             "com.xiaomi.mxbluetoothsdk.manager.MxBluetoothManager"
         ).forEach { className ->
             runCatching {
-                className.toClass().method {
-                    name = "getInstanceForIsMiTWS"
-                    param(Context::class.java)
-                }.hook {
-                    before {
-                        registerStatusReceiver(this.args[0] as? Context)
-                    }
+                hookBefore(findMethod(className, "getInstanceForIsMiTWS", Context::class.java)) {
+                    registerStatusReceiver(args[0] as? Context)
                 }
             }.onFailure { Log.w(TAG, "hook $className.getInstanceForIsMiTWS skipped", it) }
         }
@@ -94,98 +86,73 @@ object MiLinkServiceHook : YukiBaseHooker() {
 
     private fun hookBluetoothDeviceResult(className: String, methodName: String, result: () -> Any) {
         runCatching {
-            className.toClass().method {
-                name = methodName
-                param(BluetoothDevice::class.java)
-            }.hook {
-                after {
-                    val device = this.args[0] as? BluetoothDevice ?: return@after
-                    if (!isOppoPod(device)) return@after
-                    val old = this.result
-                    this.result = result()
-                    if (className == "com.miui.headset.runtime.AncBatteryController" && methodName == "getHeadsetPropertyBlock") {
-                        notifyHeadsetPropertyChanged(this.instance, device, 4)
-                    }
-                    Log.d(TAG, "$className.$methodName forced old=$old new=${this.result} address=${device.address}")
+            hookAfter(findMethod(className, methodName, BluetoothDevice::class.java)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookAfter
+                if (!isOppoPod(device)) return@hookAfter
+                val old = this.result
+                this.result = result()
+                if (className == "com.miui.headset.runtime.AncBatteryController" && methodName == "getHeadsetPropertyBlock") {
+                    notifyHeadsetPropertyChanged(instance, device, 4)
                 }
+                Log.d(TAG, "$className.$methodName forced old=$old new=${this.result} address=${device.address}")
             }
         }.onFailure { Log.w(TAG, "hook $className.$methodName(BluetoothDevice) skipped", it) }
     }
 
     private fun hookStringAddressResult(className: String, methodName: String, result: () -> Any) {
         runCatching {
-            className.toClass().method {
-                name = methodName
-                param(String::class.java)
-            }.hook {
-                after {
-                    val address = this.args[0] as? String ?: return@after
-                    if (!isOppoAddress(address)) return@after
-                    val old = this.result
-                    this.result = result()
-                    Log.d(TAG, "$className.$methodName forced old=$old new=${this.result} address=$address")
-                }
+            hookAfter(findMethod(className, methodName, String::class.java)) {
+                val address = args[0] as? String ?: return@hookAfter
+                if (!isOppoAddress(address)) return@hookAfter
+                val old = this.result
+                this.result = result()
+                Log.d(TAG, "$className.$methodName forced old=$old new=${this.result} address=$address")
             }
         }.onFailure { Log.w(TAG, "hook $className.$methodName(String) skipped", it) }
     }
 
     private fun hookAncCommand(className: String, methodName: String, oppoAnc: Int, result: Int) {
         runCatching {
-            className.toClass().method {
-                name = methodName
-                param(BluetoothDevice::class.java)
-            }.hook {
-                before {
-                    val device = this.args[0] as? BluetoothDevice ?: return@before
-                    if (!isOppoPod(device)) return@before
-                    currentAnc = oppoAnc
-                    sendOppoAnc(oppoAnc)
-                    this.result = result
-                    Log.d(TAG, "$className.$methodName handled address=${device.address} oppoAnc=$oppoAnc result=$result")
-                }
+            hookBefore(findMethod(className, methodName, BluetoothDevice::class.java)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                currentAnc = oppoAnc
+                sendOppoAnc(oppoAnc)
+                this.result = result
+                Log.d(TAG, "$className.$methodName handled address=${device.address} oppoAnc=$oppoAnc result=$result")
             }
         }.onFailure { Log.w(TAG, "hook $className.$methodName command skipped", it) }
     }
 
     private fun hookAncStateBlock() {
         runCatching {
-            "com.miui.headset.runtime.AncBatteryController".toClass().method {
-                name = "setAncStateBlock"
-                param(BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)
-            }.hook {
-                before {
-                    val device = this.args[0] as? BluetoothDevice ?: return@before
-                    if (!isOppoPod(device)) return@before
-                    val miLinkMode = this.args[1] as? Int ?: return@before
-                    val oppoAnc = oppoAncFromMiLink(miLinkMode)
-                    val instanceContext = runCatching { XposedHelpers.getObjectField(this.instance, "context") as? Context }.getOrNull()
-                    if (instanceContext != null) {
-                        context = instanceContext.applicationContext ?: instanceContext
-                    }
-                    currentAnc = oppoAnc
-                    sendOppoAnc(oppoAnc, instanceContext)
-                    sendMiLinkAncChanged(oppoAnc, instanceContext)
-                    notifyHeadsetPropertyChanged(this.instance, device, 8)
-                    notifyHeadsetPropertyChanged(this.instance, device, 4)
-                    this.result = miLinkAncState()
-                    Log.d(TAG, "AncBatteryController.setAncStateBlock handled address=${device.address} miLinkMode=$miLinkMode oppoAnc=$oppoAnc result=${this.result} context=${instanceContext ?: context}")
+            hookBefore(findMethod("com.miui.headset.runtime.AncBatteryController", "setAncStateBlock", BluetoothDevice::class.java, Int::class.javaPrimitiveType!!)) {
+                val device = args[0] as? BluetoothDevice ?: return@hookBefore
+                if (!isOppoPod(device)) return@hookBefore
+                val miLinkMode = args[1] as? Int ?: return@hookBefore
+                val oppoAnc = oppoAncFromMiLink(miLinkMode)
+                val instanceContext = runCatching { getObjectField(instance, "context") as? Context }.getOrNull()
+                if (instanceContext != null) {
+                    context = instanceContext.applicationContext ?: instanceContext
                 }
+                currentAnc = oppoAnc
+                sendOppoAnc(oppoAnc, instanceContext)
+                sendMiLinkAncChanged(oppoAnc, instanceContext)
+                notifyHeadsetPropertyChanged(instance, device, 8)
+                notifyHeadsetPropertyChanged(instance, device, 4)
+                this.result = miLinkAncState()
+                Log.d(TAG, "AncBatteryController.setAncStateBlock handled address=${device.address} miLinkMode=$miLinkMode oppoAnc=$oppoAnc result=${this.result} context=${instanceContext ?: context}")
             }
         }.onFailure { Log.w(TAG, "hook AncBatteryController.setAncStateBlock skipped", it) }
     }
 
     private fun hookHeadsetInfoNoArg(methodName: String, result: () -> Any) {
         runCatching {
-            "com.miui.headset.api.HeadsetInfo".toClass().method {
-                name = methodName
-                paramCount = 0
-            }.hook {
-                after {
-                    if (!isTargetHeadsetInfo(this.instance)) return@after
-                    val old = this.result
-                    this.result = result()
-                    Log.d(TAG, "HeadsetInfo.$methodName forced old=$old new=${this.result}")
-                }
+            hookAfter(findMethodByParamCount("com.miui.headset.api.HeadsetInfo", methodName, 0)) {
+                if (!isTargetHeadsetInfo(instance)) return@hookAfter
+                val old = this.result
+                this.result = result()
+                Log.d(TAG, "HeadsetInfo.$methodName forced old=$old new=${this.result}")
             }
         }.onFailure { Log.w(TAG, "hook HeadsetInfo.$methodName skipped", it) }
     }
@@ -255,7 +222,7 @@ object MiLinkServiceHook : YukiBaseHooker() {
     private fun isTargetHeadsetInfo(info: Any?): Boolean {
         if (info == null) return false
         listOf("getAddress", "component1").forEach { method ->
-            val address = runCatching { XposedHelpers.callMethod(info, method) as? String }.getOrNull()
+            val address = runCatching { callMethod(info, method) as? String }.getOrNull()
             if (address != null && isOppoAddress(address)) return true
         }
         return false
@@ -324,13 +291,13 @@ object MiLinkServiceHook : YukiBaseHooker() {
     }
 
     private fun notifyHeadsetPropertyChanged(controller: Any?, device: BluetoothDevice, updateType: Int) {
-        val listener = runCatching { XposedHelpers.getObjectField(controller, "headsetPropertyChangeListener") }.getOrNull()
+        val listener = runCatching { getObjectField(controller, "headsetPropertyChangeListener") }.getOrNull()
         if (listener == null) {
             Log.w(TAG, "notifyHeadsetPropertyChanged skipped: listener is null updateType=$updateType")
             return
         }
         runCatching {
-            XposedHelpers.callMethod(listener, "invoke", device, updateType)
+            callMethod(listener, "invoke", device, updateType)
             Log.d(TAG, "notifyHeadsetPropertyChanged invoked updateType=$updateType address=${device.address}")
         }.onFailure { Log.w(TAG, "notifyHeadsetPropertyChanged failed updateType=$updateType", it) }
     }
